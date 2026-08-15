@@ -40,11 +40,11 @@ By default, once you complete the post-install steps:
 
 ### 2. Same hash format ($6$ SHA-512 crypt)
 
-**Choice:** nginx reads `htpasswd` using its own crypt-compatible verifier. Debian bookworm's `/etc/shadow` uses `$6$` (SHA-512 crypt) by default. musl libc in `nginx:alpine` supports `$6$`. So the shadow hash is copied verbatim — no re-hashing, no plaintext passes through the sync script.
+**Choice:** nginx reads `htpasswd` using its own crypt-compatible verifier. We force `/etc/shadow` to use `$6$` (SHA-512 crypt) by rewriting `pam_unix.so obscure yescrypt` → `pam_unix.so obscure sha512` in `/etc/pam.d/common-password` during phase 3. musl libc in `nginx:alpine` supports `$6$`, so the shadow hash is copied verbatim — no re-hashing, no plaintext passes through the sync script.
 
 **Alternative rejected:** bcrypt. Would need re-hashing (from `$6$` to `$2b$`), which needs plaintext, which means the sync script would have to consume PAM_AUTHTOK from stdin. More moving parts, no security gain — the security of the hash is dominated by the choice of plaintext password (`1234` by default; the operator will change it).
 
-**Caveat:** if you enable yescrypt on this box (via `pam-auth-update`, uncommon on bookworm arm64), shadow uses `$y$`. musl's crypt() may or may not verify `$y$` depending on nginx-alpine build. If your operator did this and pi-web login stops working after a `passwd root`, that is why. Workaround: leave the shadow encryption method at the bookworm default.
+**Verified caveat (2026-08-15, Armbian OS 26.08.0 bookworm arm64):** the distro default is yescrypt (`$y$`). musl crypt() in `nginx:alpine` 1.27 does NOT implement yescrypt — a `root:$y$…` htpasswd makes nginx return HTTP 500 (not 401 — noticeably different failure mode from a wrong password). That's why phase 3 rewrites the PAM method. Any pre-existing `$y$` hash must be regenerated once with `sudo passwd root`; phase 3 detects this and prints a WARN telling the operator to do so.
 
 ### 3. `pi ALL=(ALL) NOPASSWD:ALL`
 

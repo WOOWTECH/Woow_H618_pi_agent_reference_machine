@@ -54,7 +54,13 @@ Cause candidates in order of likelihood:
    sudo cat /home/pi/.config/pi-agent/htpasswd
    # should show:  root:$6$...
    ```
-2. **Shadow hash format is not `$6$`.** Bookworm defaults to `$6$` (SHA-512 crypt). If you enabled yescrypt via `pam-auth-update`, shadow uses `$y$` — nginx-alpine's musl crypt may not verify it. Fix: revert to `$6$` in `/etc/pam.d/common-password`, then `sudo passwd root` again.
+2. **Shadow hash is `$y$` (yescrypt).** Armbian bookworm ships `pam_unix.so obscure yescrypt` in `/etc/pam.d/common-password`. **Verified 2026-08-15: nginx:alpine's musl crypt() does not implement yescrypt and returns HTTP 500** (not 401 — different failure mode from a bad password) whenever htpasswd contains a `$y$` line. Phase 3 auto-rewrites that PAM argument from `yescrypt` to `sha512`, but the fix only affects FUTURE passwd calls. If root already had a `$y$` hash before phase 3 ran, you must re-set it once:
+   ```bash
+   sudo getent shadow root | cut -d: -f2 | head -c 3
+   # Expect $6$. If you see $y$, run:
+   sudo passwd root
+   # Now shadow regenerates as $6$, and the PAM hook syncs it into htpasswd.
+   ```
 3. **Sync hook is not wired.** Check:
    ```bash
    grep -F 'Woow_H618' /etc/pam.d/common-password

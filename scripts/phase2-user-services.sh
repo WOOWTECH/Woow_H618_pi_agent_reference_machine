@@ -100,11 +100,12 @@ auth_basic_user_file /etc/nginx/htpasswd;
 EOF
 chmod 644 "${CONFIG_PI_AGENT}/auth.conf"
 
-# htpasswd: empty placeholder. `install -m 0600 /dev/null` creates the file
-# with the right mode from birth, avoiding a umask-dependent world-readable
-# moment. Phase 3 fills it.
+# htpasswd: empty placeholder. Mode 0644 (not 0600) because the file is
+# mounted read-only into nginx:alpine and nginx worker runs as uid ~101,
+# which cannot read a 0600 file owned by container-root (= host pi). Phase 3
+# fills it via the shadow-sync path.
 if [ ! -f "${CONFIG_PI_AGENT}/htpasswd" ]; then
-  install -m 0600 /dev/null "${CONFIG_PI_AGENT}/htpasswd"
+  install -m 0644 /dev/null "${CONFIG_PI_AGENT}/htpasswd"
 fi
 
 # --- 5. cf-webui env ---------------------------------------------------------

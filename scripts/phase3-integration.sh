@@ -49,13 +49,26 @@ fi
 say "Installing password sync script to /usr/local/sbin/pi-web-passwd-sync.sh"
 install -m 0755 "${REPO_ROOT}/scripts/pi-web-passwd-sync.sh" /usr/local/sbin/pi-web-passwd-sync.sh
 
-# --- 3. PAM wiring -----------------------------------------------------------
+PAM_FILE=/etc/pam.d/common-password
+
+# --- 3a. force sha512 crypt (yescrypt is unsupported by nginx-alpine) -------
+# Verified on 2026-08-15: nginx:alpine's musl crypt() returns HTTP 500 when
+# htpasswd contains a $y$ (yescrypt) hash. Armbian bookworm defaults to
+# yescrypt via `pam_unix.so obscure yescrypt`. Rewrite that argument to
+# `sha512` so future passwd changes produce $6$ hashes the sync script can
+# copy verbatim into htpasswd.
+if grep -qE '^password\s.*pam_unix\.so.*\byescrypt\b' "${PAM_FILE}"; then
+  say "Switching ${PAM_FILE} pam_unix from yescrypt to sha512"
+  cp -a "${PAM_FILE}" "${PAM_FILE}.bak-yescrypt-$(date +%s)"
+  sed -i -E 's/(^password\s+.*pam_unix\.so\s+.*)\byescrypt\b/\1sha512/' "${PAM_FILE}"
+fi
+
+# --- 3b. PAM wiring for sync hook -------------------------------------------
 # Append a pam_exec line to common-password if not already present. The
 # marker ensures we do not append twice on re-run. We MUST use `optional`,
 # not `required`: if our sync script ever breaks, users must still be able
 # to change their password. Locking out a user because htpasswd sync failed
 # would be a defect worse than the one we are fixing.
-PAM_FILE=/etc/pam.d/common-password
 PAM_MARK="# Woow_H618_pi_agent_reference_machine: pi-web password sync"
 say "Wiring pam_exec into ${PAM_FILE}"
 if ! grep -qF "${PAM_MARK}" "${PAM_FILE}"; then
@@ -65,11 +78,13 @@ if ! grep -qF "${PAM_MARK}" "${PAM_FILE}"; then
   {
     echo ""
     echo "${PAM_MARK}"
-    echo "# expose_authtok: pass the new password on stdin to the script"
-    echo "# quiet:          do not print the script's stderr into passwd's output"
-    echo "# type=update:    only fire on successful password change (not on the"
-    echo "#                 initial validation call)"
-    echo "password optional pam_exec.so expose_authtok quiet type=update /usr/local/sbin/pi-web-passwd-sync.sh"
+    echo "# quiet: suppress the script's stderr in the passwd caller's output"
+    echo "# No 'type=update' — chpasswd (non-interactive) does not classify its"
+    echo "#   PAM call as PAM_UPDATE_AUTHTOK, so type=update silently prevents"
+    echo "#   the hook from firing. Verified 2026-08-15 on Armbian bookworm."
+    echo "# No 'expose_authtok' — sync script reads shadow, never touches the"
+    echo "#   plaintext. Firing 1-2 times per passwd is harmless (idempotent)."
+    echo "password optional pam_exec.so quiet /usr/local/sbin/pi-web-passwd-sync.sh"
   } >> "${PAM_FILE}"
   say "  PAM hook appended"
 else
@@ -115,6 +130,20 @@ say "Seeding pi-web htpasswd from current /etc/shadow (user 'root')"
 PI_USER="${PI_USER}" /usr/local/sbin/pi-web-passwd-sync.sh --seed || \
   warn "Initial seed failed — the pi-web htpasswd is empty. Run: sudo passwd root"
 
+# --- 5b. restart pi-agent-nginx to attach a fresh bind mount ----------------
+# Podman bind-mounts the htpasswd file by INODE at container start. If phase
+# 2 created a placeholder and phase 3 later `cp`s the real content over, the
+# file's inode is preserved and the bind mount stays valid — but only if
+# the container was started AFTER phase 2 created the placeholder. On an
+# existing/upgraded box, the container may have an orphaned inode bind-
+# mounted (from a previous mv-based swap). A one-shot restart re-resolves
+# the bind mount against the current living inode. Cheap (~5s), idempotent.
+if id -u "${PI_USER}" >/dev/null 2>&1; then
+  say "Restarting pi-agent-nginx to attach current htpasswd inode"
+  su - "${PI_USER}" -c "XDG_RUNTIME_DIR=/run/user/$(id -u ${PI_USER}) systemctl --user restart pi-agent-nginx.service" \
+    2>/dev/null || warn "  restart failed; run manually: sudo -u ${PI_USER} systemctl --user restart pi-agent-nginx"
+fi
+
 # --- 6. root password fallback ----------------------------------------------
 # If root shadow entry is empty (locked) — Armbian's post-first-boot state
 # where root login was disabled — set it to '1234'. Chosen for parity with
@@ -126,6 +155,19 @@ case "${ROOT_SHADOW}" in
     # chpasswd goes through PAM, which triggers the sync hook installed above,
     # so we do NOT need to also call the sync script here.
     echo "root:1234" | chpasswd
+    ;;
+  \$y\$*)
+    # Existing root password uses yescrypt. Phase 3a switched PAM to sha512
+    # for FUTURE passwd calls, but the existing shadow entry is untouched.
+    # We do NOT force-reset the password (that would silently overwrite the
+    # operator's chosen password). Instead, warn them: pi-web will 500 until
+    # they run `passwd root` themselves. The sync script's seed step will
+    # also have logged the same complaint.
+    warn "root shadow uses yescrypt (\$y\$) — nginx-alpine cannot verify it."
+    warn "  pi-web will return HTTP 500 for login until you run:"
+    warn "      sudo passwd root"
+    warn "  That regenerates the shadow hash as \$6\$ (sha512-crypt) and the"
+    warn "  PAM hook syncs it into htpasswd automatically."
     ;;
   *)
     say "root already has a password — leaving it alone"

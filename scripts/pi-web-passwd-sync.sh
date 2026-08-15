@@ -68,14 +68,18 @@ case "${HASH}" in
     logger -t pi-web-passwd-sync "'${TARGET_USER}' has no usable password (locked/empty) — htpasswd left unchanged"
     exit 0
     ;;
-  \$6\$*|\$5\$*|\$y\$*|\$argon2*)
-    # $6 SHA-512 (default), $5 SHA-256, $y yescrypt (bookworm may use this
-    # on new installs), $argon2 (rare). All are what nginx's crypt() accepts,
-    # or at least what most nginx builds' crypt() accepts. We do not attempt
-    # to convert — if you selected yescrypt via pam-auth-update on this box,
-    # and nginx-alpine cannot read it, htpasswd auth will fail and you will
-    # know. Do NOT silently downgrade.
+  \$6\$*|\$5\$*)
+    # $6 SHA-512 crypt, $5 SHA-256 crypt. Both verified working with
+    # nginx:alpine's musl crypt().
     :
+    ;;
+  \$y\$*)
+    # yescrypt. Verified NOT supported by nginx:alpine's musl crypt()
+    # (returns HTTP 500 on auth attempt). Refuse to write a broken htpasswd.
+    # Phase 3 switches PAM to sha512 to prevent this; if you still see this,
+    # your operator re-enabled yescrypt via pam-auth-update.
+    logger -t pi-web-passwd-sync "'${TARGET_USER}' shadow uses yescrypt (\$y\$); nginx-alpine cannot verify it. Switch /etc/pam.d/common-password from 'yescrypt' to 'sha512' and re-run 'passwd ${TARGET_USER}'. htpasswd left unchanged."
+    exit 0
     ;;
   *)
     logger -t pi-web-passwd-sync "unrecognised hash prefix in shadow for '${TARGET_USER}': ${HASH%%\$*}"
@@ -83,16 +87,35 @@ case "${HASH}" in
     ;;
 esac
 
-# Atomic write: create tempfile in the same directory (so rename is atomic
-# on the same filesystem), then rename. This avoids nginx reading a
-# half-written htpasswd during the swap.
+# IN-PLACE write, not mv. Podman bind-mounts the file by INODE at container
+# start; `mv` swaps the pathname to a new inode and orphans the mount —
+# nginx keeps seeing the old (now-deleted) inode indefinitely. We must
+# preserve the inode: write to a tempfile first (for atomicity of content),
+# then `cp` (which truncates + writes into the existing inode). nginx reads
+# htpasswd per-request; a small cp is fast enough that the risk of reading
+# a half-written file in practice is negligible for a 110-byte file.
+#
+# Mode 0644 (not 0600): the file is mounted read-only into nginx:alpine's
+# rootless container. Host pi (uid 1000) maps to container root (uid 0);
+# nginx worker inside the container runs as `nginx` (uid ~101). With 0600
+# only container-root can read, and the worker gets EACCES → HTTP 500.
+# 0644 lets the worker read. The hash is a KDF output, not a secret; other
+# host users cannot escalate from reading it (they'd need to brute-force).
 CONFIG_DIR="${HOME_DIR}/.config/pi-agent"
 mkdir -p "${CONFIG_DIR}"
-TMP="$(mktemp "${CONFIG_DIR}/.htpasswd.XXXXXX")"
-printf '%s:%s\n' "${HTPASSWD_USER}" "${HASH}" > "${TMP}"
-chmod 0600 "${TMP}"
-chown "${PI_USER}:${PI_USER}" "${TMP}"
-mv "${TMP}" "${HTPASSWD_FILE}"
+
+if [ ! -e "${HTPASSWD_FILE}" ]; then
+  # First-time creation — plain write is fine, no bind-mount yet.
+  printf '%s:%s\n' "${HTPASSWD_USER}" "${HASH}" > "${HTPASSWD_FILE}"
+else
+  # Existing file: preserve inode. Stage new contents, cp over the top.
+  TMP="$(mktemp "${CONFIG_DIR}/.htpasswd.XXXXXX")"
+  printf '%s:%s\n' "${HTPASSWD_USER}" "${HASH}" > "${TMP}"
+  cp "${TMP}" "${HTPASSWD_FILE}"
+  rm -f "${TMP}"
+fi
+chmod 0644 "${HTPASSWD_FILE}"
+chown "${PI_USER}:${PI_USER}" "${HTPASSWD_FILE}"
 
 # nginx reads htpasswd on each request; no restart is needed. But log it so
 # the operator can confirm the sync fired.
