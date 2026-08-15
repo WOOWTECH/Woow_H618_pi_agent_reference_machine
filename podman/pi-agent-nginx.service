@@ -1,0 +1,27 @@
+[Unit]
+Description=pi-agent nginx - Host/Origin shim and auth gate for pi-web
+Documentation=https://github.com/WOOWTECH/Woow_podman_pi_agent_package
+After=network-online.target pi-web.service
+Wants=network-online.target
+Requires=pi-web.service
+# PartOf: when pi-web is restarted, this service is also restarted. Necessary
+# because nginx resolves the pi-web hostname on the pi-agent bridge network
+# at startup, and would otherwise cache a stale IP after pi-web is replaced.
+PartOf=pi-web.service
+
+[Service]
+Restart=always
+RestartSec=5
+
+ExecStartPre=-/usr/bin/podman rm -f pi-agent-nginx
+ExecStart=/usr/bin/podman run --rm --name pi-agent-nginx \
+    --network pi-agent --hostname pi-agent-nginx \
+    -p 0.0.0.0:30142:30142 \
+    -v %h/.config/pi-agent/nginx.conf:/etc/nginx/nginx.conf:ro \
+    -v %h/.config/pi-agent/auth.conf:/etc/nginx/auth.conf:ro \
+    -v %h/.config/pi-agent/htpasswd:/etc/nginx/htpasswd:ro \
+    docker.io/library/nginx:1.27-alpine
+ExecStop=/usr/bin/podman stop -t 10 pi-agent-nginx
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,27 @@
+[Unit]
+Description=cf-tunnel-webgui - Cloudflare Tunnel manager
+Documentation=https://github.com/WOOWTECH/Woow_cloudflare_tunnel_webgui
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Restart=always
+RestartSec=5
+# CSRF_SECRET is stored in ~/.config/cf-webui/env, generated once by
+# phase 2. Regenerating it invalidates existing browser sessions — that is
+# the correct behaviour for a re-install.
+EnvironmentFile=%h/.config/cf-webui/env
+
+ExecStartPre=-/usr/bin/podman rm -f cf-tunnel-webgui
+# cf-webui internally spawns cloudflared as a child process. It needs no
+# host networking — the container binds :8000, we publish it as :8888 on the
+# host. The tunnel connection itself is outbound to CF, so no inbound ports.
+ExecStart=/usr/bin/podman run --rm --name cf-tunnel-webgui \
+    -p 0.0.0.0:8888:8000 \
+    -v cf-tunnel-webgui-data:/data \
+    -e CSRF_SECRET=${CSRF_SECRET} \
+    localhost/cf-webui:latest
+ExecStop=/usr/bin/podman stop -t 10 cf-tunnel-webgui
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,22 @@
+[Unit]
+Description=Tailscale web UI (LAN + tailnet, official behaviour)
+Documentation=https://tailscale.com/kb/1244/tailscale-web
+After=tailscaled.service network-online.target
+Wants=network-online.target
+BindsTo=tailscaled.service
+
+[Service]
+Type=exec
+EnvironmentFile=/etc/tailscale-woow.env
+# tailscale web runs the management UI. Default bind is 100.x:5252 (tailnet
+# only). We override with WEB_LISTEN so CF Tunnel + LAN both work.
+#
+# We do NOT pass --readonly. Rationale: matches tailscale CLI default; if
+# the operator needs to restrict, they should put CF Access in front of the
+# public URL, not cripple the LAN-side UI.
+ExecStart=/usr/bin/tailscale web --listen ${WEB_LISTEN}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

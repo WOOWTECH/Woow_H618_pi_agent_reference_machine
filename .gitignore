@@ -1,0 +1,7 @@
+*.bak
+*.bak-*
+*.swp
+.DS_Store
+build/
+src/Woow_podman_pi_agent_package/
+src/Woow_cloudflare_tunnel_webgui/

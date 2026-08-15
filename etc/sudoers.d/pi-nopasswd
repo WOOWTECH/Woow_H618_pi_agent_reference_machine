@@ -1,0 +1,15 @@
+# Woow H618 reference machine — grant the pi user sudo without a password.
+#
+# Rationale:
+#   - Matches the Armbian factory default UX ("no password prompt on sudo").
+#   - This machine is behind LAN + tailnet + CF Access; a password prompt on
+#     sudo does not defend against any threat that the earlier layers do not
+#     already stop.
+#   - The pi user runs rootless podman; sudo is only used for maintenance,
+#     not for day-to-day service operation. Prompting on every apt/systemctl
+#     during troubleshooting is friction without value.
+#
+# If you disagree with this trade-off, remove this file and run:
+#   sudo passwd pi
+# ...then interactive sudo will work with the password.
+pi ALL=(ALL) NOPASSWD:ALL

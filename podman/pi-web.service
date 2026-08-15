@@ -1,0 +1,33 @@
+[Unit]
+Description=pi-web - pi coding agent web UI
+Documentation=https://github.com/WOOWTECH/Woow_podman_pi_agent_package
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Restart=always: pi-web crashes on model errors sometimes and self-recovers
+# by restart. RestartSec=5 avoids tight-looping if the image is misbuilt.
+Restart=always
+RestartSec=5
+# TimeoutStartSec is generous: first boot on a fresh pi-agent-data volume
+# downloads ~720MB of video tooling. It is asynchronous inside pi-web, but
+# the container's HEALTHCHECK grace period benefits from the longer window.
+TimeoutStartSec=900
+
+ExecStartPre=-/usr/bin/podman rm -f pi-web
+ExecStart=/usr/bin/podman run --rm --name pi-web \
+    --network pi-agent --hostname pi-web \
+    --security-opt no-new-privileges \
+    -v pi-agent-data:/data/pi-agent \
+    -e PI_WEB_HOSTNAME=0.0.0.0 \
+    -e PI_WEB_PORT=30141 \
+    -e PI_AGENT_DATA_DIR=/data/pi-agent \
+    -e LOG_LEVEL=info \
+    -e TZ=Asia/Taipei \
+    -e VIDEO_PIPELINE_ENABLED=false \
+    -e RESET_VIDEO_TOOLS=false \
+    localhost/pi-agent:latest
+ExecStop=/usr/bin/podman stop -t 10 pi-web
+
+[Install]
+WantedBy=default.target
