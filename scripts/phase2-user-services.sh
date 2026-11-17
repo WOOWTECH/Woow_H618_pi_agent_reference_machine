@@ -2,7 +2,7 @@
 # Phase 2: user-scope service install. Runs as ${PI_USER}.
 #
 # What this does:
-#   1. clone (or update) Woow_podman_pi_agent_package + Woow_cloudflare_tunnel_webgui into ~/src/
+#   1. clone (or update) Woow_podman_pi_agent_package + Woow_podman_cf_tunnel_webgui into ~/src/
 #   2. `podman build` both images (localhost/pi-agent:latest, localhost/cf-webui:latest)
 #   3. create podman network + volumes
 #   4. install three systemd user units in ~/.config/systemd/user/
@@ -25,8 +25,10 @@ die()  { printf '\033[1;31mXX\033[0m [phase2] %s\n' "$*" >&2; exit 1; }
 
 SRC_DIR="${HOME}/src"
 PI_AGENT_REPO="${PI_AGENT_REPO:-https://github.com/WOOWTECH/Woow_podman_pi_agent_package.git}"
-CF_WEBUI_REPO="${CF_WEBUI_REPO:-https://github.com/WOOWTECH/Woow_cloudflare_tunnel_webgui.git}"
+CF_WEBUI_REPO="${CF_WEBUI_REPO:-https://github.com/WOOWTECH/Woow_podman_cf_tunnel_webgui.git}"
 PI_AGENT_DIR="${SRC_DIR}/Woow_podman_pi_agent_package"
+# The repo was renamed Woow_cloudflare_tunnel_webgui → Woow_podman_cf_tunnel_webgui (2026-11-18). The
+# checkout keeps its old directory name so existing boards update in place (and uninstall.sh finds it).
 CF_WEBUI_DIR="${SRC_DIR}/Woow_cloudflare_tunnel_webgui"
 
 USER_SYSTEMD="${HOME}/.config/systemd/user"

@@ -258,5 +258,5 @@ MIT。看 [LICENSE](LICENSE)。
 ## 姊妹 repo
 
 - [`WOOWTECH/Woow_podman_pi_agent_package`](https://github.com/WOOWTECH/Woow_podman_pi_agent_package) — pi coding agent、rootless podman 打包
-- [`WOOWTECH/Woow_cloudflare_tunnel_webgui`](https://github.com/WOOWTECH/Woow_cloudflare_tunnel_webgui) — Cloudflare Tunnel 網頁 GUI
+- [`WOOWTECH/Woow_podman_cf_tunnel_webgui`](https://github.com/WOOWTECH/Woow_podman_cf_tunnel_webgui) — Cloudflare Tunnel 網頁 GUI
 - [`WOOWTECH/Woow_ha_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package) — headscale 版本（沒用在這裡，但本 repo 的 tailscale-web 模式是從這裡演化來的）

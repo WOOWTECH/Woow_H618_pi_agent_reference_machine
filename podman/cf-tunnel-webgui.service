@@ -1,6 +1,6 @@
 [Unit]
 Description=cf-tunnel-webgui - Cloudflare Tunnel manager
-Documentation=https://github.com/WOOWTECH/Woow_cloudflare_tunnel_webgui
+Documentation=https://github.com/WOOWTECH/Woow_podman_cf_tunnel_webgui
 After=network-online.target
 Wants=network-online.target
 
