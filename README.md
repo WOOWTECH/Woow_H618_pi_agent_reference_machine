@@ -259,5 +259,5 @@ MIT. See [LICENSE](LICENSE).
 ## Sibling repos
 
 - [`WOOWTECH/Woow_podman_pi_agent_package`](https://github.com/WOOWTECH/Woow_podman_pi_agent_package) — the pi coding agent, packaged for rootless podman
-- [`WOOWTECH/Woow_cloudflare_tunnel_webgui`](https://github.com/WOOWTECH/Woow_cloudflare_tunnel_webgui) — the Cloudflare Tunnel web GUI
+- [`WOOWTECH/Woow_podman_cf_tunnel_webgui`](https://github.com/WOOWTECH/Woow_podman_cf_tunnel_webgui) — the Cloudflare Tunnel web GUI
 - [`WOOWTECH/Woow_ha_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package) — a headscale variant (not used here, but this repo's tailscale-web patterns are derived from it)
